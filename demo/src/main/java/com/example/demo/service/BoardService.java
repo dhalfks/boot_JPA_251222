@@ -7,6 +7,8 @@ import com.example.demo.entity.Board;
 import com.example.demo.entity.File;
 import org.springframework.data.domain.Page;
 
+import java.util.List;
+
 public interface BoardService {
     // 추상메서드만 가능한 인터페이스
     // default method : 인터페이스에서 규칙을 잡거나, 로직을 잡거나 할 때 사용
@@ -49,11 +51,12 @@ public interface BoardService {
 
     Long insert(BoardDTO boardDTO);
 
-    Page<BoardDTO> getList(int pageNo);
+    Page<BoardDTO> getList(int pageNo, String type, String keyword);
 
     BoardFileDTO getDetail(long bno);
 
-    Long modify(BoardDTO boardDTO);
+    //Long modify(BoardDTO boardDTO);
+    Long modify(BoardFileDTO boardFileDTO);
 
     void remove(long bno);
 
@@ -84,4 +87,10 @@ public interface BoardService {
     }
 
     Long insert(BoardFileDTO boardFileDTO);
+
+    long fileRemove(String uuid);
+
+    FileDTO getFile(String uuid);
+
+    List<FileDTO> getTodayFileList(String today);
 }

@@ -31,9 +31,13 @@ public class BoardServiceImpl implements BoardService {
     @Override
     public Long insert(BoardFileDTO boardFileDTO) {
         BoardDTO boardDTO = boardFileDTO.getBoardDTO();
+        List<FileDTO> fileDTOList = boardFileDTO.getFileList();
+        if(fileDTOList != null){
+            boardDTO.setFileQty(fileDTOList.size());
+        }
+
         Long bno = boardRepository.save(convertDtoToEntity(boardDTO)).getBno();
 
-        List<FileDTO> fileDTOList = boardFileDTO.getFileList();
         if(bno > 0 &&  fileDTOList != null){
             for(FileDTO fileDTO : fileDTOList){
                 fileDTO.setBno(bno);
@@ -41,6 +45,43 @@ public class BoardServiceImpl implements BoardService {
             }
         }
         return bno;
+    }
+
+    @Transactional
+    @Override
+    public long fileRemove(String uuid) {
+        Optional<File> optionalFile = fileRepository.findById(uuid);
+        if(optionalFile.isPresent()){
+            long bno = optionalFile.get().getBno();
+            fileRepository.deleteById(uuid);
+            // 삭제한 파일 갯수 차감
+            Board board = boardRepository.findById(bno)
+                    .orElseThrow(()-> new EntityNotFoundException());
+            board.setFileQty(board.getFileQty()-1);
+            
+            return bno;
+        }
+        return 0;
+    }
+
+    @Override
+    public FileDTO getFile(String uuid) {
+        Optional<File> optionalFile = fileRepository.findById(uuid);
+        if(optionalFile.isPresent()){
+            return convertEntityToDto(optionalFile.get());
+        }
+        return null;
+    }
+
+    @Override
+    public List<FileDTO> getTodayFileList(String today) {
+        List<File> fileList = fileRepository.findBySaveDir(today);
+        if(fileList.isEmpty() || fileList != null){
+            return fileList.stream()
+                    .map(this :: convertEntityToDto)
+                    .toList();
+        }
+        return null;
     }
 
     @Override
@@ -54,12 +95,23 @@ public class BoardServiceImpl implements BoardService {
         return bno;
     }
 
+//    @Override
+//    public Page<BoardDTO> getList(int pageNo) {
+//        // limit 시작번지, 개수 => 번지는 0부터 시작
+//        // pageNo = 1 => limit 10,10  => pageNo -1  => 0부터 인식되게 처리
+//        Pageable pageable = PageRequest.of(pageNo-1, 10, Sort.by("bno").descending());
+//        Page<Board> pageList = boardRepository.findAll(pageable);
+//        Page<BoardDTO> boardDTOPage = pageList.map(this::convertEntityToDto);
+//        return boardDTOPage;
+//    }
+
     @Override
-    public Page<BoardDTO> getList(int pageNo) {
-        // limit 시작번지, 개수 => 번지는 0부터 시작
-        // pageNo = 1 => limit 10,10  => pageNo -1  => 0부터 인식되게 처리
+    public Page<BoardDTO> getList(int pageNo, String type, String keyword) {
         Pageable pageable = PageRequest.of(pageNo-1, 10, Sort.by("bno").descending());
-        Page<Board> pageList = boardRepository.findAll(pageable);
+        // type과 keyword에 일치하는 리스트를 리턴
+        Page<Board> pageList = boardRepository.searchBoard(type, keyword, pageable);
+        log.info(">>>> searchList >> {}", pageList.getContent());
+        log.info(">>>> searchList >> {}", pageList.getTotalElements());
         Page<BoardDTO> boardDTOPage = pageList.map(this::convertEntityToDto);
         return boardDTOPage;
     }
@@ -83,6 +135,28 @@ public class BoardServiceImpl implements BoardService {
             return boardFileDTO;
         }
         return null;
+    }
+
+    @Transactional
+    @Override
+    public Long modify(BoardFileDTO boardFileDTO) {
+        Board board = boardRepository.findById(boardFileDTO.getBoardDTO().getBno())
+                .orElseThrow(()-> new EntityNotFoundException("존재하지 않는 게시글입니다."));
+        board.setTitle(boardFileDTO.getBoardDTO().getTitle());
+        board.setContent(boardFileDTO.getBoardDTO().getContent());
+        // readcount
+        boardReadCountUpdate(board, -1);
+
+        if(boardFileDTO.getFileList() != null){
+            // fileList가 null이 아니면 파일 갯수 저장
+            board.setFileQty(boardFileDTO.getFileList().size());
+
+            for(FileDTO fileDTO : boardFileDTO.getFileList()){
+                fileDTO.setBno(board.getBno());
+                fileRepository.save(convertDtoToEntity(fileDTO));
+            }
+        }
+        return board.getBno();
     }
 
 
@@ -125,20 +199,20 @@ public class BoardServiceImpl implements BoardService {
      * save()가 없어도 (명시적으로 호출하지 않아도) 수정된 필드를 DB에 자동 반영
      * */
 
-    @Transactional
-    @Override
-    public Long modify(BoardDTO boardDTO) {
-        /* optional.orElseThrow(()-> new EntityNotFoundExcetion("존재하지 않는 게시글"))
-        */
-        Board board = boardRepository.findById(boardDTO.getBno())
-                .orElseThrow(()-> new EntityNotFoundException("존재하지 않는 게시글"));
-        board.setTitle(boardDTO.getTitle());
-        board.setContent(boardDTO.getContent());
-        
-        boardReadCountUpdate(board, -1);
-
-        return boardDTO.getBno();
-    }
+//    @Transactional
+//    @Override
+//    public Long modify(BoardDTO boardDTO) {
+//        /* optional.orElseThrow(()-> new EntityNotFoundExcetion("존재하지 않는 게시글"))
+//        */
+//        Board board = boardRepository.findById(boardDTO.getBno())
+//                .orElseThrow(()-> new EntityNotFoundException("존재하지 않는 게시글"));
+//        board.setTitle(boardDTO.getTitle());
+//        board.setContent(boardDTO.getContent());
+//
+//        boardReadCountUpdate(board, -1);
+//
+//        return boardDTO.getBno();
+//    }
 
     @Override
     public void remove(long bno) {

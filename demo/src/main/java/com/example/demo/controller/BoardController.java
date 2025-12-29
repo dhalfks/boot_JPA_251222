@@ -4,12 +4,14 @@ import com.example.demo.dto.BoardDTO;
 import com.example.demo.dto.BoardFileDTO;
 import com.example.demo.dto.FileDTO;
 import com.example.demo.handler.FileHandler;
+import com.example.demo.handler.FileRemoveHandler;
 import com.example.demo.handler.PageHandler;
 import com.example.demo.service.BoardService;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
@@ -46,7 +48,7 @@ public class BoardController {
 
         //Long bno = boardService.insert(boardDTO);
         //log.info(">>>> insert id >> {}", bno);
-        return "redirect:/";
+        return "redirect:/board/list";
     }
 
 //    @GetMapping("/list")
@@ -56,22 +58,33 @@ public class BoardController {
 //        model.addAttribute("list", list);
 //    }
 
+//    @GetMapping("/list")
+//    public void list(Model model,
+//                     @RequestParam(name="pageNo", defaultValue = "1", required = false) int pageNo){
+//        // select * from board order by bno desc limit 0,10;
+//        //pageNo = 1; // 3page
+//        Page<BoardDTO> list = boardService.getList(pageNo);
+//        log.info(">>>> getTotalElements >> {}", list.getTotalElements()); // 전체 게시글 수
+//        log.info(">>>> getTotalPages >> {}", list.getTotalPages()); // 전체 페이수 수
+//        log.info(">>>> getPageable >> {}", list.getPageable());
+//        log.info(">>>> hasNext >> {}", list.hasNext()); // 다음 여부
+//        log.info(">>>> hasPrevious >> {}", list.hasPrevious()); // 이전 여부
+//
+//        PageHandler<BoardDTO> pageHandler = new PageHandler<>(list, pageNo);
+//
+//        model.addAttribute("ph", pageHandler);
+//    }
+
     @GetMapping("/list")
     public void list(Model model,
-                     @RequestParam(name="pageNo", defaultValue = "1", required = false) int pageNo){
-        // select * from board order by bno desc limit 0,10;
-        //pageNo = 1; // 3page
-        Page<BoardDTO> list = boardService.getList(pageNo);
-        log.info(">>>> getTotalElements >> {}", list.getTotalElements()); // 전체 게시글 수
-        log.info(">>>> getTotalPages >> {}", list.getTotalPages()); // 전체 페이수 수
-        log.info(">>>> getPageable >> {}", list.getPageable());
-        log.info(">>>> hasNext >> {}", list.hasNext()); // 다음 여부
-        log.info(">>>> hasPrevious >> {}", list.hasPrevious()); // 이전 여부
-
-        PageHandler<BoardDTO> pageHandler = new PageHandler<>(list, pageNo);
-
-        model.addAttribute("ph", pageHandler);
-    }
+                 @RequestParam(name="pageNo", defaultValue = "1", required = false) int pageNo,
+                 @RequestParam(name = "type", required = false) String type,
+                 @RequestParam(name = "keyword", required = false) String keyword){
+    // page + search
+    Page<BoardDTO> list = boardService.getList(pageNo, type, keyword);
+    PageHandler<BoardDTO> pageHandler = new PageHandler<>(list, pageNo, type, keyword);
+    model.addAttribute("ph", pageHandler);
+}
 
     @GetMapping("/detail")
     public void detail(@RequestParam("bno") long bno, Model model){
@@ -81,8 +94,16 @@ public class BoardController {
 
     @PostMapping("/modify")
     public String modify(BoardDTO boardDTO,
-                         RedirectAttributes redirectAttributes){
-        Long bno = boardService.modify(boardDTO);
+                         RedirectAttributes redirectAttributes,
+                         @RequestParam(name = "files", required = false) MultipartFile[] files){
+        List<FileDTO>fileDTOList = null;
+        log.info(">>> files >> {}", files);
+        if(files != null && files[0].getSize() > 0){
+            fileDTOList = fileHandler.uploadFile(files);
+            log.info(">>> fileDtoList >> {}", fileDTOList);
+        }
+
+        Long bno = boardService.modify(new BoardFileDTO(boardDTO, fileDTOList));
         redirectAttributes.addAttribute("bno", boardDTO.getBno());
         return "redirect:/board/detail";
     }
@@ -91,6 +112,22 @@ public class BoardController {
     public String remove(@RequestParam("bno") long bno){
         boardService.remove(bno);
         return "redirect:/board/list";
+    }
+
+    @DeleteMapping("/file/{uuid}")
+    public ResponseEntity<String> fileRemove(@PathVariable("uuid")String uuid){
+        // 파일을 먼저 삭제하고, DB의 데이터 삭제
+        FileDTO removeFile = boardService.getFile(uuid);
+        FileRemoveHandler fileRemoveHandler = new FileRemoveHandler();
+        boolean isDel = fileRemoveHandler.removeFile(removeFile);
+
+        // DB 데이터 삭제
+        long bno = 0;
+        if(isDel){
+            bno = boardService.fileRemove(uuid);
+        }
+        return bno > 0 ? ResponseEntity.ok("1") :
+                ResponseEntity.internalServerError().build();
     }
 
 
